@@ -7,6 +7,7 @@ import time
 
 from chess_model import ChessModel
 from chess_view import ChessView
+from tournament import TournamentRunner
 
 class ChessController:
     def __init__(self, root):
@@ -24,8 +25,8 @@ class ChessController:
         self.engine_white = None
         self.engine_black = None
         
-        self.depth_white = 9
-        self.depth_black = 5
+        self.depth_white = 100
+        self.depth_black = 100
 
         self.ask_game_mode()
         
@@ -52,39 +53,65 @@ class ChessController:
     def ask_game_mode(self):
         self._close_engines()
         
-        engine_mode = messagebox.askyesno("Game Mode", "Do you want to run Engine vs Engine?")
-        self.engine_vs_engine = engine_mode
+        # Create a custom dialog for the 3 choices
+        choice_window = tk.Toplevel(self.view.root)
+        choice_window.title("Select Game Mode")
+        choice_window.geometry("300x200")
+        
+        self.mode_choice = None
 
-        if self.engine_vs_engine:
-            messagebox.showinfo("Select Engines", "Please select the .exe for White, then Black.")
-            
+        def set_mode(mode):
+            self.mode_choice = mode
+            choice_window.destroy()
+
+        tk.Button(choice_window, text="Play against Bot", command=lambda: set_mode("pve")).pack(pady=10)
+        tk.Button(choice_window, text="Engine vs Engine (Single Game)", command=lambda: set_mode("eve")).pack(pady=10)
+        tk.Button(choice_window, text="Engine vs Engine (100 Games Stats)", command=lambda: set_mode("tournament")).pack(pady=10)
+        
+        self.view.root.wait_window(choice_window) # Wait for user to click
+        
+        if not self.mode_choice:
+            return # User closed window
+
+        if self.mode_choice == "tournament":
+            messagebox.showinfo("Tournament Mode", "Select engines: White, then Black.")
             white_path = filedialog.askopenfilename(title="Select WHITE Engine", filetypes=[("Executable", "*.exe")])
-            if not white_path: return
-            
             black_path = filedialog.askopenfilename(title="Select BLACK Engine", filetypes=[("Executable", "*.exe")])
-            if not black_path: return
             
-            self.engine_white = chess.engine.SimpleEngine.popen_uci(white_path)
-            self.engine_black = chess.engine.SimpleEngine.popen_uci(black_path)
+            if white_path and black_path:
+                # Trigger the separate file logic
+                TournamentRunner(self.view.root, white_path, black_path, num_games=100, depth=100)
+                # Keep main board empty or reset
+                self.model.reset()
+                self.request_redraw()
+                
+        elif self.mode_choice == "eve":
+            self.engine_vs_engine = True
+            white_path = filedialog.askopenfilename(title="Select WHITE Engine", filetypes=[("Executable", "*.exe")])
+            black_path = filedialog.askopenfilename(title="Select BLACK Engine", filetypes=[("Executable", "*.exe")])
             
-            self.model.player_color = None 
-            self.make_bot_move()
-        else:
+            if white_path and black_path:
+                self.engine_white = chess.engine.SimpleEngine.popen_uci(white_path)
+                self.engine_black = chess.engine.SimpleEngine.popen_uci(black_path)
+                self.model.player_color = None 
+                self.make_bot_move()
+                self.request_redraw()
+
+        elif self.mode_choice == "pve":
+            self.engine_vs_engine = False
             result = messagebox.askyesno("Color Selection", "Do you want to play as White?")
             self.model.set_colors(player_is_white=result)
             
             bot_path = filedialog.askopenfilename(title="Select BOT Engine", filetypes=[("Executable", "*.exe")])
-            if not bot_path: return
-            
-            if self.model.bot_color == chess.WHITE:
-                self.engine_white = chess.engine.SimpleEngine.popen_uci(bot_path)
-            else:
-                self.engine_black = chess.engine.SimpleEngine.popen_uci(bot_path)
+            if bot_path:
+                if self.model.bot_color == chess.WHITE:
+                    self.engine_white = chess.engine.SimpleEngine.popen_uci(bot_path)
+                else:
+                    self.engine_black = chess.engine.SimpleEngine.popen_uci(bot_path)
 
-            if self.model.board.turn == self.model.bot_color:
-                self.make_bot_move()
-                
-        self.request_redraw()
+                if self.model.board.turn == self.model.bot_color:
+                    self.make_bot_move()
+                self.request_redraw()
 
     def restart_game(self):
         self.model.reset()
@@ -206,7 +233,7 @@ class ChessController:
             self.update_navigation_buttons()
             
             if self.check_game_end(): return
-            self.view.root.after(500, self.make_bot_move)
+            self.view.root.after(10, self.make_bot_move)
         else:
             self.selected_square = None
             self.request_redraw()
