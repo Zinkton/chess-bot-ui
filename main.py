@@ -1,6 +1,6 @@
 import threading
 import tkinter as tk
-from tkinter import messagebox, filedialog
+from tkinter import messagebox, filedialog, simpledialog
 import chess
 import chess.engine
 import time
@@ -25,18 +25,20 @@ class ChessController:
         self.engine_white = None
         self.engine_black = None
         
-        self.depth_white = 100
-        self.depth_black = 100
+        self.config_white = None
+        self.config_black = None
 
         self.ask_game_mode()
         
     def _close_engines(self):
         """Safely terminates active engines."""
         if getattr(self, 'engine_white', None):
-            self.engine_white.quit()
+            try: self.engine_white.quit()
+            except: pass
             self.engine_white = None
         if getattr(self, 'engine_black', None):
-            self.engine_black.quit()
+            try: self.engine_black.quit()
+            except: pass
             self.engine_black = None
 
     def request_redraw(self, hide_square=None):
@@ -50,10 +52,71 @@ class ChessController:
         self.view.update_status(self.model.get_game_status_text())
         self.view.update_captured_display(self.model.captured_pieces_white, self.model.captured_pieces_black)
 
+    def ask_engine_config(self, title):
+        """Displays a dialog to select an engine and set its constraints."""
+        dialog = tk.Toplevel(self.view.root)
+        dialog.title(title)
+        dialog.geometry("450x250")
+        
+        result_config = {}
+        
+        # Path
+        tk.Label(dialog, text="Engine Executable:").grid(row=0, column=0, padx=10, pady=10, sticky="e")
+        path_var = tk.StringVar()
+        tk.Entry(dialog, textvariable=path_var, width=30).grid(row=0, column=1)
+        def browse():
+            filepath = filedialog.askopenfilename(filetypes=[("Executable", "*.exe"), ("All Files", "*.*")])
+            if filepath: path_var.set(filepath)
+        tk.Button(dialog, text="Browse", command=browse).grid(row=0, column=2, padx=5)
+        
+        # Depth
+        tk.Label(dialog, text="Max Depth (empty = infinite):").grid(row=1, column=0, padx=10, pady=5, sticky="e")
+        depth_var = tk.StringVar(value="100")
+        tk.Entry(dialog, textvariable=depth_var, width=15).grid(row=1, column=1, sticky="w")
+        
+        # Time
+        tk.Label(dialog, text="Time Limit ms (empty = infinite):").grid(row=2, column=0, padx=10, pady=5, sticky="e")
+        time_var = tk.StringVar(value="1000")
+        tk.Entry(dialog, textvariable=time_var, width=15).grid(row=2, column=1, sticky="w")
+        
+        # Threads
+        tk.Label(dialog, text="Threads (empty = engine default):").grid(row=3, column=0, padx=10, pady=5, sticky="e")
+        threads_var = tk.StringVar(value="24")
+        tk.Entry(dialog, textvariable=threads_var, width=15).grid(row=3, column=1, sticky="w")
+        
+        def submit():
+            if not path_var.get():
+                messagebox.showerror("Error", "Please select an engine executable.", parent=dialog)
+                return
+                
+            def parse_val(val):
+                v = val.strip()
+                return int(v) if v.isdigit() else None
+                
+            result_config['path'] = path_var.get()
+            result_config['depth'] = parse_val(depth_var.get())
+            result_config['time'] = parse_val(time_var.get())
+            result_config['threads'] = parse_val(threads_var.get())
+            dialog.destroy()
+            
+        tk.Button(dialog, text="Confirm Settings", command=submit, width=20).grid(row=4, column=0, columnspan=3, pady=20)
+        
+        dialog.transient(self.view.root)
+        dialog.grab_set()
+        self.view.root.wait_window(dialog)
+        
+        return result_config if 'path' in result_config else None
+
+    def _apply_engine_options(self, engine, config):
+        if config['threads'] is not None:
+            try:
+                engine.configure({"Threads": config['threads']})
+            except Exception as e:
+                print(f"Notice: Engine doesn't support 'Threads' parameter. ({e})")
+
     def ask_game_mode(self):
         self._close_engines()
         
-        # Create a custom dialog for the 3 choices
         choice_window = tk.Toplevel(self.view.root)
         choice_window.title("Select Game Mode")
         choice_window.geometry("300x200")
@@ -68,46 +131,58 @@ class ChessController:
         tk.Button(choice_window, text="Engine vs Engine (Single Game)", command=lambda: set_mode("eve")).pack(pady=10)
         tk.Button(choice_window, text="Engine vs Engine (100 Games Stats)", command=lambda: set_mode("tournament")).pack(pady=10)
         
-        self.view.root.wait_window(choice_window) # Wait for user to click
+        self.view.root.wait_window(choice_window) 
         
         if not self.mode_choice:
-            return # User closed window
+            return 
 
         if self.mode_choice == "tournament":
-            messagebox.showinfo("Tournament Mode", "Select engines: White, then Black.")
-            white_path = filedialog.askopenfilename(title="Select WHITE Engine", filetypes=[("Executable", "*.exe")])
-            black_path = filedialog.askopenfilename(title="Select BLACK Engine", filetypes=[("Executable", "*.exe")])
+            messagebox.showinfo("Tournament Mode", "Configure engines: White, then Black.")
+            white_cfg = self.ask_engine_config("Configure WHITE Engine")
+            if not white_cfg: return
+            black_cfg = self.ask_engine_config("Configure BLACK Engine")
+            if not black_cfg: return
             
-            if white_path and black_path:
-                # Trigger the separate file logic
-                TournamentRunner(self.view.root, white_path, black_path, num_games=100, depth=100)
-                # Keep main board empty or reset
-                self.model.reset()
-                self.request_redraw()
+            TournamentRunner(self.view.root, white_cfg, black_cfg, num_games=100)
+            self.model.reset()
+            self.request_redraw()
                 
         elif self.mode_choice == "eve":
             self.engine_vs_engine = True
-            white_path = filedialog.askopenfilename(title="Select WHITE Engine", filetypes=[("Executable", "*.exe")])
-            black_path = filedialog.askopenfilename(title="Select BLACK Engine", filetypes=[("Executable", "*.exe")])
+            w_cfg = self.ask_engine_config("Configure WHITE Engine")
+            if not w_cfg: return
+            b_cfg = self.ask_engine_config("Configure BLACK Engine")
+            if not b_cfg: return
             
-            if white_path and black_path:
-                self.engine_white = chess.engine.SimpleEngine.popen_uci(white_path)
-                self.engine_black = chess.engine.SimpleEngine.popen_uci(black_path)
-                self.model.player_color = None 
-                self.make_bot_move()
-                self.request_redraw()
+            self.config_white = w_cfg
+            self.config_black = b_cfg
+            
+            self.engine_white = chess.engine.SimpleEngine.popen_uci(w_cfg['path'])
+            self._apply_engine_options(self.engine_white, w_cfg)
+            
+            self.engine_black = chess.engine.SimpleEngine.popen_uci(b_cfg['path'])
+            self._apply_engine_options(self.engine_black, b_cfg)
+            
+            self.model.player_color = None 
+            self.make_bot_move()
+            self.request_redraw()
 
         elif self.mode_choice == "pve":
             self.engine_vs_engine = False
             result = messagebox.askyesno("Color Selection", "Do you want to play as White?")
             self.model.set_colors(player_is_white=result)
             
-            bot_path = filedialog.askopenfilename(title="Select BOT Engine", filetypes=[("Executable", "*.exe")])
-            if bot_path:
+            bot_cfg = self.ask_engine_config("Configure BOT Engine")
+            if bot_cfg:
+                engine = chess.engine.SimpleEngine.popen_uci(bot_cfg['path'])
+                self._apply_engine_options(engine, bot_cfg)
+                
                 if self.model.bot_color == chess.WHITE:
-                    self.engine_white = chess.engine.SimpleEngine.popen_uci(bot_path)
+                    self.config_white = bot_cfg
+                    self.engine_white = engine
                 else:
-                    self.engine_black = chess.engine.SimpleEngine.popen_uci(bot_path)
+                    self.config_black = bot_cfg
+                    self.engine_black = engine
 
                 if self.model.board.turn == self.model.bot_color:
                     self.make_bot_move()
@@ -238,16 +313,13 @@ class ChessController:
             self.selected_square = None
             self.request_redraw()
 
-    # --- Bot Logic ---
     def make_bot_move(self):
         if self.check_game_end(): return 
         
         is_white_turn = self.model.board.turn == chess.WHITE
         active_engine = self.engine_white if is_white_turn else self.engine_black
         engine_name = "White Engine" if is_white_turn else "Black Engine"
-        
-        # Select the corresponding depth limit
-        active_depth = self.depth_white if is_white_turn else self.depth_black
+        active_config = self.config_white if is_white_turn else self.config_black
         
         self.view.status_label.config(text=f"Game Status: {engine_name} is thinking...") 
         
@@ -255,26 +327,24 @@ class ChessController:
         
         bot_thread = threading.Thread(
             target=self._bot_calculation_thread, 
-            # Add active_depth to the arguments
-            args=(board_copy, active_engine, engine_name, active_depth) 
+            args=(board_copy, active_engine, engine_name, active_config) 
         ) 
         bot_thread.daemon = True 
         bot_thread.start()
 
-    def _bot_calculation_thread(self, board, engine, engine_name, depth_limit):
+    def _bot_calculation_thread(self, board, engine, engine_name, config):
         try:
             start_time = time.time()
             
-            result = engine.play(
-                board, 
-                chess.engine.Limit(depth=depth_limit), 
-                info=chess.engine.INFO_ALL
-            )
+            time_limit_sec = (config['time'] / 1000.0) if config['time'] is not None else None
+            limit = chess.engine.Limit(depth=config['depth'], time=time_limit_sec)
+            
+            result = engine.play(board, limit, info=chess.engine.INFO_ALL)
             
             calculation_time = time.time() - start_time
-            actual_depth = result.info.get("depth", depth_limit) 
+            actual_depth = result.info.get("depth", config['depth'] if config['depth'] is not None else "N/A") 
             
-            print(f"[{engine_name}] Time: {calculation_time:.3f}s | Target Depth: {depth_limit} | Actual: {actual_depth} | Move: {result.move.uci()}")
+            print(f"[{engine_name}] Time: {calculation_time:.3f}s | Target Depth: {config['depth']} | Actual: {actual_depth} | Move: {result.move.uci()}")
             
             score_str = "N/A"
             if "score" in result.info:

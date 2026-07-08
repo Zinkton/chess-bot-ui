@@ -6,16 +6,14 @@ import chess.engine
 import os
 
 class TournamentRunner:
-    def __init__(self, root, engine1_exe, engine2_exe, num_games=100, depth=100):
+    def __init__(self, root, config1, config2, num_games=100):
         self.root = root
-        self.engine1_exe = engine1_exe
-        self.engine2_exe = engine2_exe
+        self.config1 = config1
+        self.config2 = config2
         self.num_games = num_games
-        self.depth_limit = depth
         
-        # Get clean names for the UI (e.g., "stockfish_15" instead of the full path)
-        self.e1_name = os.path.basename(engine1_exe).split('.')[0]
-        self.e2_name = os.path.basename(engine2_exe).split('.')[0]
+        self.e1_name = os.path.basename(config1['path']).split('.')[0]
+        self.e2_name = os.path.basename(config2['path']).split('.')[0]
         
         # Stats tracking per engine
         self.e1_wins = 0
@@ -61,26 +59,33 @@ class TournamentRunner:
         )
         
         if self.e1_depths:
-            avg_1 = sum(self.e1_depths) / len(self.e1_depths)
+            avg_1 = self.get_trimmed_average(self.e1_depths, 0.05)
             self.e1_depth_lbl.config(text=f"{self.e1_name} Avg Depth: {avg_1:.1f}")
             
         if self.e2_depths:
-            avg_2 = sum(self.e2_depths) / len(self.e2_depths)
+            avg_2 = self.get_trimmed_average(self.e2_depths, 0.05)
             self.e2_depth_lbl.config(text=f"{self.e2_name} Avg Depth: {avg_2:.1f}")
+
+    def get_trimmed_average(self, depths, trim_percent=0.05):
+        n = len(depths)
+        if n == 0: return 0
+        trim_count = int(n * trim_percent)
+        if trim_count == 0: return sum(depths) / n
+        sorted_depths = sorted(depths)
+        trimmed_depths = sorted_depths[trim_count : -trim_count]
+        return sum(trimmed_depths) / len(trimmed_depths)
 
     def stop_tournament(self):
         self.is_running = False
         self.progress_lbl.config(text="Tournament Stopped.")
         self.stop_btn.config(text="Close", command=self.window.destroy)
-
+    
     def run_tournament(self):
         engine1 = None
         engine2 = None
 
         def start_engines():
-            """Helper function to boot/reboot engines and safely apply limits."""
             nonlocal engine1, engine2
-            # Clean up old instances if they exist
             if engine1:
                 try: engine1.quit()
                 except: pass
@@ -88,9 +93,16 @@ class TournamentRunner:
                 try: engine2.quit()
                 except: pass
             
-            # Start fresh instances
-            engine1 = chess.engine.SimpleEngine.popen_uci(self.engine1_exe)
-            engine2 = chess.engine.SimpleEngine.popen_uci(self.engine2_exe)
+            engine1 = chess.engine.SimpleEngine.popen_uci(self.config1['path'])
+            engine2 = chess.engine.SimpleEngine.popen_uci(self.config2['path'])
+
+            # Apply threads if applicable
+            if self.config1['threads']:
+                try: engine1.configure({"Threads": self.config1['threads']})
+                except: pass
+            if self.config2['threads']:
+                try: engine2.configure({"Threads": self.config2['threads']})
+                except: pass
 
         try:
             start_engines()
@@ -108,20 +120,25 @@ class TournamentRunner:
                         
                         if engine1_is_white:
                             active_engine = engine1 if is_white_turn else engine2
+                            active_config = self.config1 if is_white_turn else self.config2
                         else:
                             active_engine = engine2 if is_white_turn else engine1
+                            active_config = self.config2 if is_white_turn else self.config1
+                        
+                        time_limit = (active_config['time'] / 1000.0) if active_config['time'] else None
                         
                         result = active_engine.play(
                             board, 
-                            chess.engine.Limit(depth=self.depth_limit), 
+                            chess.engine.Limit(depth=active_config['depth'], time=time_limit), 
                             info=chess.engine.INFO_ALL
                         )
                         
-                        actual_depth = result.info.get("depth", self.depth_limit)
-                        if active_engine == engine1:
-                            self.e1_depths.append(actual_depth)
-                        else:
-                            self.e2_depths.append(actual_depth)
+                        actual_depth = result.info.get("depth", active_config['depth'])
+                        if actual_depth is not None:
+                            if active_engine == engine1:
+                                self.e1_depths.append(actual_depth)
+                            else:
+                                self.e2_depths.append(actual_depth)
                             
                         board.push(result.move)
 
@@ -129,14 +146,12 @@ class TournamentRunner:
                     print(f"\n--- CRASH DETECTED IN GAME {i} ---")
                     print(f"Error: {game_err}")
                     print("Game history before crash:")
-                    # This prints standard chess notation (e.g., 1. e4 e5 2. Nf3)
                     print(chess.Board().variation_san(board.move_stack))
                     print("\nRestarting engines and retrying this game...\n")
                     
                     start_engines()
-                    game_crashed = True # Mark so we don't score this game
+                    game_crashed = True 
 
-                # Only score and advance to the next game if it finished without crashing
                 if not game_crashed and self.is_running:
                     game_result = board.result()
                     
@@ -150,7 +165,7 @@ class TournamentRunner:
                         else: self.e1_wins += 1
                     
                     self.root.after(0, self.update_ui)
-                    i += 1 # Advance to the next game
+                    i += 1 
 
             if self.is_running:
                 self.root.after(0, lambda: self.progress_lbl.config(text="Tournament Complete!"))
@@ -159,7 +174,6 @@ class TournamentRunner:
         except Exception as e:
             print(f"Tournament fatal error: {e}")
         finally:
-            # Ensure engines are closed when the thread finishes
             if engine1:
                 try: engine1.quit()
                 except: pass
