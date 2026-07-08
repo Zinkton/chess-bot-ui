@@ -129,7 +129,7 @@ class ChessController:
 
         tk.Button(choice_window, text="Play against Bot", command=lambda: set_mode("pve")).pack(pady=10)
         tk.Button(choice_window, text="Engine vs Engine (Single Game)", command=lambda: set_mode("eve")).pack(pady=10)
-        tk.Button(choice_window, text="Engine vs Engine (100 Games Stats)", command=lambda: set_mode("tournament")).pack(pady=10)
+        tk.Button(choice_window, text="Engine vs Engine (Tournament)", command=lambda: set_mode("tournament")).pack(pady=10)
         
         self.view.root.wait_window(choice_window) 
         
@@ -137,13 +137,25 @@ class ChessController:
             return 
 
         if self.mode_choice == "tournament":
+            num_games = simpledialog.askinteger(
+                "Tournament Settings", 
+                "Enter number of games to play:", 
+                initialvalue=100, 
+                minvalue=1, 
+                maxvalue=10000,
+                parent=self.view.root
+            )
+            
+            if not num_games:
+                return
+                
             messagebox.showinfo("Tournament Mode", "Configure engines: White, then Black.")
             white_cfg = self.ask_engine_config("Configure WHITE Engine")
             if not white_cfg: return
             black_cfg = self.ask_engine_config("Configure BLACK Engine")
             if not black_cfg: return
             
-            TournamentRunner(self.view.root, white_cfg, black_cfg, num_games=100)
+            TournamentRunner(self.view.root, white_cfg, black_cfg, num_games=num_games)
             self.model.reset()
             self.request_redraw()
                 
