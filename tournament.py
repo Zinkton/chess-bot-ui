@@ -4,6 +4,7 @@ from tkinter import ttk
 import chess
 import chess.engine
 import os
+import concurrent.futures
 
 class TournamentRunner:
     def __init__(self, root, config1, config2, num_games=100):
@@ -23,8 +24,10 @@ class TournamentRunner:
         self.e1_depths = []
         self.e2_depths = []
         
-        self.current_game = 0
+        self.games_completed = 0
         self.is_running = True
+
+        self.concurrent_games = 12
 
         self.setup_ui()
         
@@ -53,7 +56,7 @@ class TournamentRunner:
         self.stop_btn.pack(pady=15)
 
     def update_ui(self):
-        self.progress_lbl.config(text=f"Game {self.current_game} of {self.num_games}")
+        self.progress_lbl.config(text=f"Completed {self.games_completed} of {self.num_games}")
         self.score_lbl.config(
             text=f"{self.e1_name} Wins: {self.e1_wins} | {self.e2_name} Wins: {self.e2_wins} | Draws: {self.draws}"
         )
@@ -77,26 +80,29 @@ class TournamentRunner:
 
     def stop_tournament(self):
         self.is_running = False
-        self.progress_lbl.config(text="Tournament Stopped.")
-        self.stop_btn.config(text="Close", command=self.window.destroy)
+        self.progress_lbl.config(text="Stopping... (Waiting for active games)")
+        self.stop_btn.config(state=tk.DISABLED)
     
-    def run_tournament(self):
+    def play_single_game(self, game_id):
+        """Runs a completely isolated game with its own engine processes."""
+        if not self.is_running:
+            return None
+
         engine1 = None
         engine2 = None
+        engine1_is_white = (game_id % 2 != 0)
+        
+        result_data = {
+            "result": None,
+            "e1_depths": [],
+            "e2_depths": [],
+            "e1_is_white": engine1_is_white
+        }
 
-        def start_engines():
-            nonlocal engine1, engine2
-            if engine1:
-                try: engine1.quit()
-                except: pass
-            if engine2:
-                try: engine2.quit()
-                except: pass
-            
+        try:
             engine1 = chess.engine.SimpleEngine.popen_uci(self.config1['path'])
             engine2 = chess.engine.SimpleEngine.popen_uci(self.config2['path'])
 
-            # Apply threads if applicable
             if self.config1['threads']:
                 try: engine1.configure({"Threads": self.config1['threads']})
                 except: pass
@@ -104,75 +110,48 @@ class TournamentRunner:
                 try: engine2.configure({"Threads": self.config2['threads']})
                 except: pass
 
-        try:
-            start_engines()
+            board = chess.Board()
             
-            i = 1
-            while i <= self.num_games and self.is_running:
-                self.current_game = i
-                board = chess.Board()
-                engine1_is_white = (i % 2 != 0)
-                game_crashed = False
+            while not board.is_game_over() and self.is_running:
+                is_white_turn = board.turn == chess.WHITE
                 
-                try:
-                    while not board.is_game_over() and self.is_running:
-                        is_white_turn = board.turn == chess.WHITE
-                        
-                        if engine1_is_white:
-                            active_engine = engine1 if is_white_turn else engine2
-                            active_config = self.config1 if is_white_turn else self.config2
-                        else:
-                            active_engine = engine2 if is_white_turn else engine1
-                            active_config = self.config2 if is_white_turn else self.config1
-                        
-                        time_limit = (active_config['time'] / 1000.0) if active_config['time'] else None
-                        
-                        result = active_engine.play(
-                            board, 
-                            chess.engine.Limit(depth=active_config['depth'], time=time_limit), 
-                            info=chess.engine.INFO_ALL
-                        )
-                        
-                        actual_depth = result.info.get("depth", active_config['depth'])
-                        if actual_depth is not None:
-                            if active_engine == engine1:
-                                self.e1_depths.append(actual_depth)
-                            else:
-                                self.e2_depths.append(actual_depth)
-                            
-                        board.push(result.move)
+                if engine1_is_white:
+                    active_engine = engine1 if is_white_turn else engine2
+                    active_config = self.config1 if is_white_turn else self.config2
+                else:
+                    active_engine = engine2 if is_white_turn else engine1
+                    active_config = self.config2 if is_white_turn else self.config1
+                
+                time_limit = (active_config['time'] / 1000.0) if active_config['time'] else None
+                
+                move_result = active_engine.play(
+                    board, 
+                    chess.engine.Limit(depth=active_config['depth'], time=time_limit), 
+                    info=chess.engine.INFO_ALL
+                )
+                
+                actual_depth = move_result.info.get("depth", active_config['depth'])
+                if actual_depth is not None:
+                    if active_engine == engine1:
+                        result_data["e1_depths"].append(actual_depth)
+                    else:
+                        result_data["e2_depths"].append(actual_depth)
+                
+                board.push(move_result.move)
 
-                except Exception as game_err:
-                    print(f"\n--- CRASH DETECTED IN GAME {i} ---")
-                    print(f"Error: {game_err}")
-                    print("Game history before crash:")
-                    print(chess.Board().variation_san(board.move_stack))
-                    print("\nRestarting engines and retrying this game...\n")
-                    
-                    start_engines()
-                    game_crashed = True 
-
-                if not game_crashed and self.is_running:
-                    game_result = board.result()
-                    
-                    if game_result == "1/2-1/2":
-                        self.draws += 1
-                    elif game_result == "1-0":
-                        if engine1_is_white: self.e1_wins += 1
-                        else: self.e2_wins += 1
-                    elif game_result == "0-1":
-                        if engine1_is_white: self.e2_wins += 1
-                        else: self.e1_wins += 1
-                    
-                    self.root.after(0, self.update_ui)
-                    i += 1 
-
-            if self.is_running:
-                self.root.after(0, lambda: self.progress_lbl.config(text="Tournament Complete!"))
-                self.root.after(0, lambda: self.stop_btn.config(text="Close", command=self.window.destroy))
+            result_data["result"] = board.result()
 
         except Exception as e:
-            print(f"Tournament fatal error: {e}")
+            print(f"\n--- CRASH DETECTED IN GAME {game_id} ---")
+            print(f"Error: {e}")
+            print("Game history before crash:")
+            try:
+                print(chess.Board().variation_san(board.move_stack))
+            except Exception:
+                # Fallback to UCI strings if the SAN conversion itself fails
+                print([move.uci() for move in board.move_stack])
+            print("-" * 40 + "\n")
+            result_data["result"] = "CRASH"
         finally:
             if engine1:
                 try: engine1.quit()
@@ -180,3 +159,43 @@ class TournamentRunner:
             if engine2:
                 try: engine2.quit()
                 except: pass
+
+        return result_data
+
+    def run_tournament(self):
+        game_ids = list(range(1, self.num_games + 1))
+        
+        # Run games in parallel
+        with concurrent.futures.ThreadPoolExecutor(max_workers=self.concurrent_games) as executor:
+            futures = [executor.submit(self.play_single_game, gid) for gid in game_ids]
+            
+            for future in concurrent.futures.as_completed(futures):
+                if not self.is_running:
+                    break
+                    
+                data = future.result()
+                if not data or data["result"] == "CRASH":
+                    continue # You could implement retry logic here
+
+                # Tally scores safely in the main thread space
+                game_result = data["result"]
+                engine1_is_white = data["e1_is_white"]
+
+                if game_result == "1/2-1/2":
+                    self.draws += 1
+                elif game_result == "1-0":
+                    if engine1_is_white: self.e1_wins += 1
+                    else: self.e2_wins += 1
+                elif game_result == "0-1":
+                    if engine1_is_white: self.e2_wins += 1
+                    else: self.e1_wins += 1
+
+                self.e1_depths.extend(data["e1_depths"])
+                self.e2_depths.extend(data["e2_depths"])
+                self.games_completed += 1
+                
+                # Push GUI updates to Tkinter's main thread
+                self.root.after(0, self.update_ui)
+
+        self.root.after(0, lambda: self.progress_lbl.config(text="Tournament Complete!"))
+        self.root.after(0, lambda: self.stop_btn.config(text="Close", command=self.window.destroy, state=tk.NORMAL))
