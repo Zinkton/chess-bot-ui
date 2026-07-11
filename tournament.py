@@ -5,6 +5,7 @@ import chess
 import chess.engine
 import os
 import concurrent.futures
+import random
 
 class TournamentRunner:
     def __init__(self, root, config1, config2, num_games=100, concurrent_games=12):
@@ -13,6 +14,19 @@ class TournamentRunner:
         self.config2 = config2
         self.num_games = num_games
         self.concurrent_games = concurrent_games
+
+        self.starting_fens = []
+        epd_path = "chess.epd"
+
+        if os.path.exists(epd_path):
+            with open(epd_path, 'r') as f:
+                for line in f:
+                    line = line.strip()
+                    if line:
+                        self.starting_fens.append(line)
+
+        if not self.starting_fens:
+            raise FileNotFoundError()
         
         self.e1_name = os.path.basename(config1['path']).split('.')[0]
         self.e2_name = os.path.basename(config2['path']).split('.')[0]
@@ -31,6 +45,22 @@ class TournamentRunner:
         
         self.thread = threading.Thread(target=self.run_tournament, daemon=True)
         self.thread.start()
+
+    def get_starting_board(self, game_id):
+        
+        
+        pair_id = (game_id - 1) // 2
+        
+        rng = random.Random(pair_id)
+        fen_index = rng.randint(0, len(self.starting_fens) - 1)
+        
+        epd_string = self.starting_fens[fen_index]
+        
+        board = chess.Board()
+        if epd_string != chess.STARTING_FEN:
+            board.set_epd(epd_string) 
+            
+        return board
 
     def setup_ui(self):
         self.window = tk.Toplevel(self.root)
@@ -78,11 +108,22 @@ class TournamentRunner:
 
     def stop_tournament(self):
         self.is_running = False
-        self.progress_lbl.config(text="Stopping... (Waiting for active games)")
+        self.progress_lbl.config(text="Aborting tournament...")
         self.stop_btn.config(state=tk.DISABLED)
+        
+        if hasattr(self, 'active_engines'):
+            for game_id in list(self.active_engines.keys()):
+                engines = self.active_engines.get(game_id)
+                if engines:
+                    for eng in engines:
+                        try:
+                            eng.close() 
+                        except:
+                            pass
+        
+        self.window.destroy()
     
     def play_single_game(self, game_id):
-        """Runs a completely isolated game with its own engine processes."""
         if not self.is_running:
             return None
 
@@ -108,7 +149,11 @@ class TournamentRunner:
                 try: engine2.configure({"Threads": self.config2['threads']})
                 except: pass
 
-            board = chess.Board()
+            if not hasattr(self, 'active_engines'):
+                self.active_engines = {}
+            self.active_engines[game_id] = (engine1, engine2)
+
+            board = self.get_starting_board(game_id)
             
             while not board.is_game_over() and self.is_running:
                 is_white_turn = board.turn == chess.WHITE
@@ -140,15 +185,10 @@ class TournamentRunner:
             result_data["result"] = board.result()
 
         except Exception as e:
-            print(f"\n--- CRASH DETECTED IN GAME {game_id} ---")
-            print(f"Error: {e}")
-            print("Game history before crash:")
-            try:
-                print(chess.Board().variation_san(board.move_stack))
-            except Exception:
-                # Fallback to UCI strings if the SAN conversion itself fails
-                print([move.uci() for move in board.move_stack])
-            print("-" * 40 + "\n")
+            if self.is_running:
+                print(f"\n--- CRASH DETECTED IN GAME {game_id} ---")
+                print(f"Error: {e}")
+                print("-" * 40 + "\n")
             result_data["result"] = "CRASH"
         finally:
             if engine1:
@@ -157,6 +197,8 @@ class TournamentRunner:
             if engine2:
                 try: engine2.quit()
                 except: pass
+            if hasattr(self, 'active_engines') and game_id in self.active_engines:
+                del self.active_engines[game_id]
 
         return result_data
 
