@@ -28,6 +28,7 @@ MANIFEST
 
 # .exe
 *.exe
+.vs/
 
 # PyInstaller
 #   Usually these files are written by a python script from a template

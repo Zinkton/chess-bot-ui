@@ -28,7 +28,7 @@ class ChessController:
         self.config_white = None
         self.config_black = None
 
-        self.ask_game_mode()
+        self.view.root.after(50, self.ask_game_mode)
         
     def _close_engines(self):
         """Safely terminates active engines."""
@@ -81,7 +81,7 @@ class ChessController:
         
         # Threads
         tk.Label(dialog, text="Threads (empty = engine default):").grid(row=3, column=0, padx=10, pady=5, sticky="e")
-        threads_var = tk.StringVar(value="24")
+        threads_var = tk.StringVar(value="")
         tk.Entry(dialog, textvariable=threads_var, width=15).grid(row=3, column=1, sticky="w")
         
         def submit():
@@ -101,7 +101,6 @@ class ChessController:
             
         tk.Button(dialog, text="Confirm Settings", command=submit, width=20).grid(row=4, column=0, columnspan=3, pady=20)
         
-        dialog.transient(self.view.root)
         dialog.grab_set()
         self.view.root.wait_window(dialog)
         
@@ -117,9 +116,13 @@ class ChessController:
     def ask_game_mode(self):
         self._close_engines()
         
+        self.view.root.withdraw() 
+        
         choice_window = tk.Toplevel(self.view.root)
         choice_window.title("Select Game Mode")
         choice_window.geometry("300x200")
+        
+        choice_window.grab_set()
         
         self.mode_choice = None
 
@@ -134,38 +137,73 @@ class ChessController:
         self.view.root.wait_window(choice_window) 
         
         if not self.mode_choice:
+            self.quit_game()
             return 
 
         if self.mode_choice == "tournament":
-            num_games = simpledialog.askinteger(
-                "Tournament Settings", 
-                "Enter number of games to play:", 
-                initialvalue=100, 
-                minvalue=1, 
-                maxvalue=10000,
-                parent=self.view.root
-            )
+            tourney_dialog = tk.Toplevel(self.view.root)
+            tourney_dialog.title("Tournament Settings")
+            tourney_dialog.geometry("300x150")
+            tourney_dialog.grab_set()
             
-            if not num_games:
+            tk.Label(tourney_dialog, text="Number of Games:").grid(row=0, column=0, padx=10, pady=10, sticky="e")
+            games_var = tk.StringVar(value="100")
+            tk.Entry(tourney_dialog, textvariable=games_var, width=10).grid(row=0, column=1, sticky="w")
+            
+            tk.Label(tourney_dialog, text="Concurrent Games:").grid(row=1, column=0, padx=10, pady=5, sticky="e")
+            concurrent_var = tk.StringVar(value="12")
+            tk.Entry(tourney_dialog, textvariable=concurrent_var, width=10).grid(row=1, column=1, sticky="w")
+            
+            tourney_settings = {}
+            
+            def submit_tourney():
+                try:
+                    tourney_settings['games'] = int(games_var.get())
+                    tourney_settings['concurrent'] = int(concurrent_var.get())
+                    tourney_dialog.destroy()
+                except ValueError:
+                    messagebox.showerror("Invalid Input", "Please enter valid integers.", parent=tourney_dialog)
+            
+            tk.Button(tourney_dialog, text="Next", command=submit_tourney, width=15).grid(row=2, column=0, columnspan=2, pady=15)
+            
+            self.view.root.wait_window(tourney_dialog)
+            
+            if not tourney_settings:
+                self.ask_game_mode()
                 return
+                
+            num_games = tourney_settings['games']
+            concurrent_games = tourney_settings['concurrent']
                 
             messagebox.showinfo("Tournament Mode", "Configure engines: White, then Black.")
             white_cfg = self.ask_engine_config("Configure WHITE Engine")
-            if not white_cfg: return
+            if not white_cfg: 
+                self.ask_game_mode()
+                return
+                
             black_cfg = self.ask_engine_config("Configure BLACK Engine")
-            if not black_cfg: return
+            if not black_cfg: 
+                self.ask_game_mode()
+                return
             
-            TournamentRunner(self.view.root, white_cfg, black_cfg, num_games=num_games)
-            self.model.reset()
-            self.request_redraw()
+            runner = TournamentRunner(self.view.root, white_cfg, black_cfg, num_games=num_games, concurrent_games=concurrent_games)
+            
+            self.view.root.wait_window(runner.window)
+            self.ask_game_mode()
                 
         elif self.mode_choice == "eve":
             self.engine_vs_engine = True
             w_cfg = self.ask_engine_config("Configure WHITE Engine")
-            if not w_cfg: return
+            if not w_cfg: 
+                self.ask_game_mode()
+                return
+                
             b_cfg = self.ask_engine_config("Configure BLACK Engine")
-            if not b_cfg: return
+            if not b_cfg: 
+                self.ask_game_mode()
+                return
             
+            self.view.root.deiconify()
             self.config_white = w_cfg
             self.config_black = b_cfg
             
@@ -185,20 +223,25 @@ class ChessController:
             self.model.set_colors(player_is_white=result)
             
             bot_cfg = self.ask_engine_config("Configure BOT Engine")
-            if bot_cfg:
-                engine = chess.engine.SimpleEngine.popen_uci(bot_cfg['path'])
-                self._apply_engine_options(engine, bot_cfg)
+            if not bot_cfg:
+                self.ask_game_mode()
+                return
                 
-                if self.model.bot_color == chess.WHITE:
-                    self.config_white = bot_cfg
-                    self.engine_white = engine
-                else:
-                    self.config_black = bot_cfg
-                    self.engine_black = engine
+            self.view.root.deiconify()
+            
+            engine = chess.engine.SimpleEngine.popen_uci(bot_cfg['path'])
+            self._apply_engine_options(engine, bot_cfg)
+            
+            if self.model.bot_color == chess.WHITE:
+                self.config_white = bot_cfg
+                self.engine_white = engine
+            else:
+                self.config_black = bot_cfg
+                self.engine_black = engine
 
-                if self.model.board.turn == self.model.bot_color:
-                    self.make_bot_move()
-                self.request_redraw()
+            if self.model.board.turn == self.model.bot_color:
+                self.make_bot_move()
+            self.request_redraw()
 
     def restart_game(self):
         self.model.reset()
@@ -452,6 +495,7 @@ class ChessController:
 
 if __name__ == "__main__":
     root = tk.Tk()
+    root.withdraw()
     app = ChessController(root)
     root.protocol("WM_DELETE_WINDOW", app.quit_game)
     root.mainloop()

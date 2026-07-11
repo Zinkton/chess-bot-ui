@@ -7,16 +7,16 @@ import os
 import concurrent.futures
 
 class TournamentRunner:
-    def __init__(self, root, config1, config2, num_games=100):
+    def __init__(self, root, config1, config2, num_games=100, concurrent_games=12):
         self.root = root
         self.config1 = config1
         self.config2 = config2
         self.num_games = num_games
+        self.concurrent_games = concurrent_games
         
         self.e1_name = os.path.basename(config1['path']).split('.')[0]
         self.e2_name = os.path.basename(config2['path']).split('.')[0]
         
-        # Stats tracking per engine
         self.e1_wins = 0
         self.e2_wins = 0
         self.draws = 0
@@ -26,8 +26,6 @@ class TournamentRunner:
         
         self.games_completed = 0
         self.is_running = True
-
-        self.concurrent_games = 12
 
         self.setup_ui()
         
