@@ -175,7 +175,6 @@ class ChessController:
             num_games = tourney_settings['games']
             concurrent_games = tourney_settings['concurrent']
                 
-            messagebox.showinfo("Tournament Mode", "Configure engines: White, then Black.")
             white_cfg = self.ask_engine_config("Configure WHITE Engine")
             if not white_cfg: 
                 self.ask_game_mode()

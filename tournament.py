@@ -75,17 +75,17 @@ class TournamentRunner:
         self.score_lbl = ttk.Label(self.window, text=f"{self.e1_name}: 0 | {self.e2_name}: 0 | Draws: 0", font=("Arial", 11))
         self.score_lbl.pack(pady=5)
 
-        self.e1_depth_lbl = ttk.Label(self.window, text=f"{self.e1_name} Avg Depth: -", font=("Arial", 10))
+        self.e1_depth_lbl = ttk.Label(self.window, text=f"{self.e1_name} average depth: -", font=("Arial", 10))
         self.e1_depth_lbl.pack(pady=2)
-        self.e2_depth_lbl = ttk.Label(self.window, text=f"{self.e2_name} Avg Depth: -", font=("Arial", 10))
+        self.e2_depth_lbl = ttk.Label(self.window, text=f"{self.e2_name} average depth: -", font=("Arial", 10))
         self.e2_depth_lbl.pack(pady=2)
 
-        self.e1_npms_lbl = ttk.Label(self.window, text=f"{self.e1_name} Avg nodes per ms: -", font=("Arial", 10))
+        self.e1_npms_lbl = ttk.Label(self.window, text=f"{self.e1_name} average nodes per ms: -", font=("Arial", 10))
         self.e1_npms_lbl.pack(pady=2)
-        self.e2_npms_lbl = ttk.Label(self.window, text=f"{self.e2_name} Avg nodes per ms: -", font=("Arial", 10))
+        self.e2_npms_lbl = ttk.Label(self.window, text=f"{self.e2_name} average nodes per ms: -", font=("Arial", 10))
         self.e2_npms_lbl.pack(pady=2)
 
-        self.stop_btn = ttk.Button(self.window, text="Stop Tournament", command=self.stop_tournament)
+        self.stop_btn = ttk.Button(self.window, text="Stop tournament", command=self.stop_tournament)
         self.stop_btn.pack(pady=15)
 
         self.copy_btn = ttk.Button(self.window, text="Copy result to clipboard", command=self.copy_to_clipboard)
@@ -97,24 +97,24 @@ class TournamentRunner:
             
         self.progress_lbl.config(text=f"Completed {self.games_completed} of {self.num_games}")
         self.score_lbl.config(
-            text=f"{self.e1_name} Wins: {self.e1_wins} | {self.e2_name} Wins: {self.e2_wins} | Draws: {self.draws}"
+            text=f"{self.e1_name} wins: {self.e1_wins} | {self.e2_name} wins: {self.e2_wins} | Draws: {self.draws}"
         )
         
         if self.e1_depths:
             avg_1_depth = self.get_trimmed_average(self.e1_depths, 0.05)
-            self.e1_depth_lbl.config(text=f"{self.e1_name} Avg Depth: {avg_1_depth:.1f}")
+            self.e1_depth_lbl.config(text=f"{self.e1_name} average depth: {avg_1_depth:.1f}")
             
         if self.e2_depths:
             avg_2_depth = self.get_trimmed_average(self.e2_depths, 0.05)
-            self.e2_depth_lbl.config(text=f"{self.e2_name} Avg Depth: {avg_2_depth:.1f}")
+            self.e2_depth_lbl.config(text=f"{self.e2_name} average depth: {avg_2_depth:.1f}")
 
         if self.e1_npms:
             avg_1_npms = self.get_trimmed_average(self.e1_npms, 0.05)
-            self.e1_npms_lbl.config(text=f"{self.e1_name} Avg NPMS: {avg_1_npms:.0f}")
+            self.e1_npms_lbl.config(text=f"{self.e1_name} average nodes per ms: {avg_1_npms:.0f}")
             
         if self.e2_npms:
             avg_2_npms = self.get_trimmed_average(self.e2_npms, 0.05)
-            self.e2_npms_lbl.config(text=f"{self.e2_name} Avg NPMS: {avg_2_npms:.0f}")
+            self.e2_npms_lbl.config(text=f"{self.e2_name} average nodes per ms: {avg_2_npms:.0f}")
 
     def get_trimmed_average(self, data_list, trim_percent=0.05):
         n = len(data_list)
