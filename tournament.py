@@ -38,6 +38,9 @@ class TournamentRunner:
         self.e1_depths = []
         self.e2_depths = []
         
+        self.e1_npms = []
+        self.e2_npms = []
+        
         self.games_completed = 0
         self.is_running = True
 
@@ -62,7 +65,7 @@ class TournamentRunner:
     def setup_ui(self):
         self.window = tk.Toplevel(self.root)
         self.window.title(f"Tournament: {self.e1_name} vs {self.e2_name}")
-        self.window.geometry("450x250")
+        self.window.geometry("450x320")
         
         self.window.protocol("WM_DELETE_WINDOW", self.close_window_handler)
 
@@ -74,12 +77,19 @@ class TournamentRunner:
 
         self.e1_depth_lbl = ttk.Label(self.window, text=f"{self.e1_name} Avg Depth: -", font=("Arial", 10))
         self.e1_depth_lbl.pack(pady=2)
-
         self.e2_depth_lbl = ttk.Label(self.window, text=f"{self.e2_name} Avg Depth: -", font=("Arial", 10))
         self.e2_depth_lbl.pack(pady=2)
 
+        self.e1_npms_lbl = ttk.Label(self.window, text=f"{self.e1_name} Avg nodes per ms: -", font=("Arial", 10))
+        self.e1_npms_lbl.pack(pady=2)
+        self.e2_npms_lbl = ttk.Label(self.window, text=f"{self.e2_name} Avg nodes per ms: -", font=("Arial", 10))
+        self.e2_npms_lbl.pack(pady=2)
+
         self.stop_btn = ttk.Button(self.window, text="Stop Tournament", command=self.stop_tournament)
         self.stop_btn.pack(pady=15)
+
+        self.copy_btn = ttk.Button(self.window, text="Copy result to clipboard", command=self.copy_to_clipboard)
+        self.copy_btn.pack(pady=5)
 
     def update_ui(self):
         if not tk.Toplevel.winfo_exists(self.window):
@@ -91,21 +101,29 @@ class TournamentRunner:
         )
         
         if self.e1_depths:
-            avg_1 = self.get_trimmed_average(self.e1_depths, 0.05)
-            self.e1_depth_lbl.config(text=f"{self.e1_name} Avg Depth: {avg_1:.1f}")
+            avg_1_depth = self.get_trimmed_average(self.e1_depths, 0.05)
+            self.e1_depth_lbl.config(text=f"{self.e1_name} Avg Depth: {avg_1_depth:.1f}")
             
         if self.e2_depths:
-            avg_2 = self.get_trimmed_average(self.e2_depths, 0.05)
-            self.e2_depth_lbl.config(text=f"{self.e2_name} Avg Depth: {avg_2:.1f}")
+            avg_2_depth = self.get_trimmed_average(self.e2_depths, 0.05)
+            self.e2_depth_lbl.config(text=f"{self.e2_name} Avg Depth: {avg_2_depth:.1f}")
 
-    def get_trimmed_average(self, depths, trim_percent=0.05):
-        n = len(depths)
+        if self.e1_npms:
+            avg_1_npms = self.get_trimmed_average(self.e1_npms, 0.05)
+            self.e1_npms_lbl.config(text=f"{self.e1_name} Avg NPMS: {avg_1_npms:.0f}")
+            
+        if self.e2_npms:
+            avg_2_npms = self.get_trimmed_average(self.e2_npms, 0.05)
+            self.e2_npms_lbl.config(text=f"{self.e2_name} Avg NPMS: {avg_2_npms:.0f}")
+
+    def get_trimmed_average(self, data_list, trim_percent=0.05):
+        n = len(data_list)
         if n == 0: return 0
         trim_count = int(n * trim_percent)
-        if trim_count == 0: return sum(depths) / n
-        sorted_depths = sorted(depths)
-        trimmed_depths = sorted_depths[trim_count : -trim_count]
-        return sum(trimmed_depths) / len(trimmed_depths)
+        if trim_count == 0: return sum(data_list) / n
+        sorted_data = sorted(data_list)
+        trimmed_data = sorted_data[trim_count : -trim_count]
+        return sum(trimmed_data) / len(trimmed_data)
 
     def stop_tournament(self):
         if not self.is_running:
@@ -149,6 +167,8 @@ class TournamentRunner:
             "result": None,
             "e1_depths": [],
             "e2_depths": [],
+            "e1_npms": [],
+            "e2_npms": [],
             "e1_is_white": engine1_is_white
         }
 
@@ -187,12 +207,27 @@ class TournamentRunner:
                     info=chess.engine.INFO_ALL
                 )
                 
-                actual_depth = move_result.info.get("depth", active_config['depth'])
-                if actual_depth is not None:
-                    if active_engine == engine1:
-                        result_data["e1_depths"].append(actual_depth)
-                    else:
-                        result_data["e2_depths"].append(actual_depth)
+                move_result = active_engine.play(
+                    board, 
+                    chess.engine.Limit(depth=active_config['depth'], time=time_limit), 
+                    info=chess.engine.INFO_ALL
+                )
+                
+                info = move_result.info
+                actual_depth = info.get("depth", active_config['depth'])
+                npms = None
+                
+                if "nps" in info and info["nps"] is not None:
+                    npms = info["nps"] / 1000.0 
+                elif "nodes" in info and "time" in info and info["time"] > 0:
+                    npms = info["nodes"] / info["time"]
+
+                if active_engine == engine1:
+                    if actual_depth is not None: result_data["e1_depths"].append(actual_depth)
+                    if npms is not None: result_data["e1_npms"].append(npms)
+                else:
+                    if actual_depth is not None: result_data["e2_depths"].append(actual_depth)
+                    if npms is not None: result_data["e2_npms"].append(npms)
                 
                 board.push(move_result.move)
 
@@ -221,6 +256,27 @@ class TournamentRunner:
                 except: pass
 
         return result_data
+
+    def copy_to_clipboard(self):
+        self.window.clipboard_clear()
+        
+        avg_1_depth = self.get_trimmed_average(self.e1_depths, 0.05) if self.e1_depths else 0
+        avg_2_depth = self.get_trimmed_average(self.e2_depths, 0.05) if self.e2_depths else 0
+        
+        avg_1_npms = self.get_trimmed_average(self.e1_npms, 0.05) if self.e1_npms else 0
+        avg_2_npms = self.get_trimmed_average(self.e2_npms, 0.05) if self.e2_npms else 0
+
+        result_text = (
+            f"{self.games_completed} game tournament.\n"
+            f"Engine {self.e1_name} config: {self.config1.get('time', 0)} ms per move; {self.config1.get('threads', 1)} threads\n"
+            f"Engine {self.e2_name} config: {self.config2.get('time', 0)} ms per move; {self.config2.get('threads', 1)} threads\n"
+            f"{self.e1_name} wins/{self.e2_name} wins/draws: {self.e1_wins}/{self.e2_wins}/{self.draws}\n"
+            f"Avg depth: {self.e1_name}: {avg_1_depth:.1f}; {self.e2_name}: {avg_2_depth:.1f}\n"
+            f"Avg nodes per ms: {self.e1_name} : {avg_1_npms:.0f}; {self.e2_name}: {avg_2_npms:.0f}"
+        )
+        
+        self.window.clipboard_append(result_text)
+        self.window.update()
 
     def run_tournament(self):
         game_ids = list(range(1, self.num_games + 1))
@@ -251,6 +307,8 @@ class TournamentRunner:
 
                 self.e1_depths.extend(data["e1_depths"])
                 self.e2_depths.extend(data["e2_depths"])
+                self.e1_npms.extend(data["e1_npms"])
+                self.e2_npms.extend(data["e2_npms"])
                 self.games_completed += 1
                 
                 self.root.after(0, self.update_ui)

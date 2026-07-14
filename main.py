@@ -81,7 +81,7 @@ class ChessController:
         
         # Threads
         tk.Label(dialog, text="Threads (empty = engine default):").grid(row=3, column=0, padx=10, pady=5, sticky="e")
-        threads_var = tk.StringVar(value="")
+        threads_var = tk.StringVar(value="1")
         tk.Entry(dialog, textvariable=threads_var, width=15).grid(row=3, column=1, sticky="w")
         
         def submit():
