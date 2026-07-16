@@ -76,7 +76,7 @@ class ChessController:
         
         # Time
         tk.Label(dialog, text="Time Limit ms (empty = infinite):").grid(row=2, column=0, padx=10, pady=5, sticky="e")
-        time_var = tk.StringVar(value="1000")
+        time_var = tk.StringVar(value="100")
         tk.Entry(dialog, textvariable=time_var, width=15).grid(row=2, column=1, sticky="w")
         
         # Threads
