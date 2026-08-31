@@ -54,11 +54,14 @@ class TournamentRunner:
         rng = random.Random(pair_id)
         fen_index = rng.randint(0, len(self.starting_fens) - 1)
         
-        epd_string = self.starting_fens[fen_index]
+        epd_string = self.starting_fens[fen_index].strip(" ;")
         
         board = chess.Board()
         if epd_string != chess.STARTING_FEN:
-            board.set_epd(epd_string) 
+            try:
+                board.set_fen(epd_string)
+            except ValueError:
+                board.set_epd(epd_string)
             
         return board
 

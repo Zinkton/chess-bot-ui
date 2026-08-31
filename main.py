@@ -1,13 +1,17 @@
+import json
+import os
 import threading
+import time
 import tkinter as tk
-from tkinter import messagebox, filedialog, simpledialog
+from tkinter import filedialog, messagebox, simpledialog
 import chess
 import chess.engine
-import time
 
 from chess_model import ChessModel
 from chess_view import ChessView
 from tournament import TournamentRunner
+
+CONFIG_FILE = "engine_config.json"
 
 class ChessController:
     def __init__(self, root):
@@ -28,10 +32,34 @@ class ChessController:
         self.config_white = None
         self.config_black = None
 
+        self.last_engine_config = self._load_config()
+
         self.view.root.after(50, self.ask_game_mode)
-        
+
+    def _load_config(self):
+        default_config = {
+            'path': '',
+            'depth': 100,
+            'time': 100,
+            'threads': 1
+        }
+        if os.path.exists(CONFIG_FILE):
+            try:
+                with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+                    saved = json.load(f)
+                    default_config.update(saved)
+            except Exception as e:
+                print(f"Notice: Failed to load config file ({e}). Using defaults.")
+        return default_config
+
+    def _save_config(self):
+        try:
+            with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
+                json.dump(self.last_engine_config, f, indent=4)
+        except Exception as e:
+            print(f"Notice: Failed to save config file ({e}).")
+    
     def _close_engines(self):
-        """Safely terminates active engines."""
         if getattr(self, 'engine_white', None):
             try: self.engine_white.quit()
             except: pass
@@ -53,35 +81,37 @@ class ChessController:
         self.view.update_captured_display(self.model.captured_pieces_white, self.model.captured_pieces_black)
 
     def ask_engine_config(self, title):
-        """Displays a dialog to select an engine and set its constraints."""
         dialog = tk.Toplevel(self.view.root)
         dialog.title(title)
         dialog.geometry("450x250")
         
         result_config = {}
+        defaults = self.last_engine_config
         
         # Path
         tk.Label(dialog, text="Engine Executable:").grid(row=0, column=0, padx=10, pady=10, sticky="e")
-        path_var = tk.StringVar()
+        path_var = tk.StringVar(value=defaults.get('path', ''))
         tk.Entry(dialog, textvariable=path_var, width=30).grid(row=0, column=1)
         def browse():
             filepath = filedialog.askopenfilename(filetypes=[("Executable", "*.exe"), ("All Files", "*.*")])
             if filepath: path_var.set(filepath)
         tk.Button(dialog, text="Browse", command=browse).grid(row=0, column=2, padx=5)
         
+        to_str = lambda val: "" if val is None else str(val)
+
         # Depth
         tk.Label(dialog, text="Max Depth (empty = infinite):").grid(row=1, column=0, padx=10, pady=5, sticky="e")
-        depth_var = tk.StringVar(value="100")
+        depth_var = tk.StringVar(value=to_str(defaults.get('depth', 100)))
         tk.Entry(dialog, textvariable=depth_var, width=15).grid(row=1, column=1, sticky="w")
         
         # Time
         tk.Label(dialog, text="Time Limit ms (empty = infinite):").grid(row=2, column=0, padx=10, pady=5, sticky="e")
-        time_var = tk.StringVar(value="100")
+        time_var = tk.StringVar(value=to_str(defaults.get('time', 100)))
         tk.Entry(dialog, textvariable=time_var, width=15).grid(row=2, column=1, sticky="w")
         
         # Threads
         tk.Label(dialog, text="Threads (empty = engine default):").grid(row=3, column=0, padx=10, pady=5, sticky="e")
-        threads_var = tk.StringVar(value="1")
+        threads_var = tk.StringVar(value=to_str(defaults.get('threads', 1)))
         tk.Entry(dialog, textvariable=threads_var, width=15).grid(row=3, column=1, sticky="w")
         
         def submit():
@@ -97,6 +127,10 @@ class ChessController:
             result_config['depth'] = parse_val(depth_var.get())
             result_config['time'] = parse_val(time_var.get())
             result_config['threads'] = parse_val(threads_var.get())
+            
+            self.last_engine_config = result_config.copy()
+            self._save_config()
+            
             dialog.destroy()
             
         tk.Button(dialog, text="Confirm Settings", command=submit, width=20).grid(row=4, column=0, columnspan=3, pady=20)
