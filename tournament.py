@@ -69,31 +69,51 @@ class TournamentRunner:
     def setup_ui(self):
         self.window = tk.Toplevel(self.root)
         self.window.title(f"Tournament: {self.e1_name} vs {self.e2_name}")
-        self.window.geometry("450x360")
+        self.window.geometry("450x380")
         
         self.window.protocol("WM_DELETE_WINDOW", self.close_window_handler)
 
         self.progress_lbl = ttk.Label(self.window, text="Starting...", font=("Arial", 12, "bold"))
         self.progress_lbl.pack(pady=10)
-
-        self.score_lbl = ttk.Label(self.window, text=f"{self.e1_name}: 0 | {self.e2_name}: 0 | Draws: 0", font=("Arial", 11))
-        self.score_lbl.pack(pady=5)
         
-        self.los_lbl = ttk.Label(self.window, text="Confidence: 50.0%", font=("Arial", 10, "bold"))
-        self.los_lbl.pack(pady=2)
+        self.los_lbl = ttk.Label(self.window, text="Confidence: Gathering data...", font=("Arial", 11, "bold"))
+        self.los_lbl.pack(pady=(0, 10))
 
-        self.e1_depth_lbl = ttk.Label(self.window, text=f"{self.e1_name} average depth: -", font=("Arial", 10))
-        self.e1_depth_lbl.pack(pady=2)
-        self.e2_depth_lbl = ttk.Label(self.window, text=f"{self.e2_name} average depth: -", font=("Arial", 10))
-        self.e2_depth_lbl.pack(pady=2)
+        stats_frame = ttk.Frame(self.window)
+        stats_frame.pack(pady=5, padx=20, fill="x")
+        
+        stats_frame.columnconfigure(0, weight=2)
+        stats_frame.columnconfigure(1, weight=1)
+        stats_frame.columnconfigure(2, weight=1)
 
-        self.e1_npms_lbl = ttk.Label(self.window, text=f"{self.e1_name} average nodes per ms: -", font=("Arial", 10))
-        self.e1_npms_lbl.pack(pady=2)
-        self.e2_npms_lbl = ttk.Label(self.window, text=f"{self.e2_name} average nodes per ms: -", font=("Arial", 10))
-        self.e2_npms_lbl.pack(pady=2)
+        ttk.Label(stats_frame, text="Statistic", font=("Arial", 10, "bold")).grid(row=0, column=0, sticky="w", pady=5)
+        ttk.Label(stats_frame, text=self.e1_name, font=("Arial", 10, "bold")).grid(row=0, column=1, pady=5)
+        ttk.Label(stats_frame, text=self.e2_name, font=("Arial", 10, "bold")).grid(row=0, column=2, pady=5)
+
+        ttk.Label(stats_frame, text="Wins:", font=("Arial", 10)).grid(row=1, column=0, sticky="w", pady=2)
+        self.e1_win_lbl = ttk.Label(stats_frame, text="0", font=("Arial", 10))
+        self.e1_win_lbl.grid(row=1, column=1, pady=2)
+        self.e2_win_lbl = ttk.Label(stats_frame, text="0", font=("Arial", 10))
+        self.e2_win_lbl.grid(row=1, column=2, pady=2)
+
+        ttk.Label(stats_frame, text="Draws:", font=("Arial", 10)).grid(row=2, column=0, sticky="w", pady=2)
+        self.draws_lbl = ttk.Label(stats_frame, text="0", font=("Arial", 10))
+        self.draws_lbl.grid(row=2, column=1, columnspan=2, pady=2)
+
+        ttk.Label(stats_frame, text="Avg Depth:", font=("Arial", 10)).grid(row=3, column=0, sticky="w", pady=2)
+        self.e1_depth_lbl = ttk.Label(stats_frame, text="-", font=("Arial", 10))
+        self.e1_depth_lbl.grid(row=3, column=1, pady=2)
+        self.e2_depth_lbl = ttk.Label(stats_frame, text="-", font=("Arial", 10))
+        self.e2_depth_lbl.grid(row=3, column=2, pady=2)
+
+        ttk.Label(stats_frame, text="Nodes / ms:", font=("Arial", 10)).grid(row=4, column=0, sticky="w", pady=2)
+        self.e1_npms_lbl = ttk.Label(stats_frame, text="-", font=("Arial", 10))
+        self.e1_npms_lbl.grid(row=4, column=1, pady=2)
+        self.e2_npms_lbl = ttk.Label(stats_frame, text="-", font=("Arial", 10))
+        self.e2_npms_lbl.grid(row=4, column=2, pady=2)
 
         self.stop_btn = ttk.Button(self.window, text="Stop tournament", command=self.stop_tournament)
-        self.stop_btn.pack(pady=15)
+        self.stop_btn.pack(pady=(20, 5))
 
         self.copy_btn = ttk.Button(self.window, text="Copy result to clipboard", command=self.copy_to_clipboard)
         self.copy_btn.pack(pady=5)
@@ -101,7 +121,6 @@ class TournamentRunner:
     def calculate_los(self, w, l):
         if w + l == 0:
             return 50.0
-        
         los = 0.5 + 0.5 * math.erf((w - l) / math.sqrt(2.0 * (w + l)))
         return los * 100.0
 
@@ -110,31 +129,41 @@ class TournamentRunner:
             return
             
         self.progress_lbl.config(text=f"Completed {self.games_completed} of {self.num_games}")
-        self.score_lbl.config(
-            text=f"{self.e1_name} wins: {self.e1_wins} | {self.e2_name} wins: {self.e2_wins} | Draws: {self.draws}"
-        )
+        
+        self.e1_win_lbl.config(text=str(self.e1_wins))
+        self.e2_win_lbl.config(text=str(self.e2_wins))
+        self.draws_lbl.config(text=str(self.draws))
         
         los_e1 = self.calculate_los(self.e1_wins, self.e2_wins)
-        if los_e1 >= 50.0:
-            self.los_lbl.config(text=f"Confidence {self.e1_name} is stronger: {los_e1:.1f}%")
+        if self.e1_wins + self.e2_wins < 10:
+            self.los_lbl.config(text="Confidence: Gathering data...")
+        elif los_e1 >= 99.0:
+            self.los_lbl.config(text=f"Confidence: {self.e1_name} is stronger ({los_e1:.1f}%)")
+        elif los_e1 <= 1.0:
+            self.los_lbl.config(text=f"Confidence: {self.e2_name} is stronger ({(100.0 - los_e1):.1f}%)")
         else:
-            self.los_lbl.config(text=f"Confidence {self.e2_name} is stronger: {(100.0 - los_e1):.1f}%")
+            current_lead = max(los_e1, 100.0 - los_e1)
+            leader = self.e1_name if los_e1 > 50 else self.e2_name
+            if los_e1 == 50.0:
+                self.los_lbl.config(text="Confidence: Exactly tied (50.0%)")
+            else:
+                self.los_lbl.config(text=f"Confidence: Too close to call ({leader} leads at {current_lead:.1f}%)")
         
         if self.e1_depths:
             avg_1_depth = self.get_trimmed_average(self.e1_depths, 0.05)
-            self.e1_depth_lbl.config(text=f"{self.e1_name} average depth: {avg_1_depth:.1f}")
+            self.e1_depth_lbl.config(text=f"{avg_1_depth:.1f}")
             
         if self.e2_depths:
             avg_2_depth = self.get_trimmed_average(self.e2_depths, 0.05)
-            self.e2_depth_lbl.config(text=f"{self.e2_name} average depth: {avg_2_depth:.1f}")
+            self.e2_depth_lbl.config(text=f"{avg_2_depth:.1f}")
 
         if self.e1_npms:
             avg_1_npms = self.get_trimmed_average(self.e1_npms, 0.05)
-            self.e1_npms_lbl.config(text=f"{self.e1_name} average nodes per ms: {avg_1_npms:.0f}")
+            self.e1_npms_lbl.config(text=f"{avg_1_npms:.0f}")
             
         if self.e2_npms:
             avg_2_npms = self.get_trimmed_average(self.e2_npms, 0.05)
-            self.e2_npms_lbl.config(text=f"{self.e2_name} average nodes per ms: {avg_2_npms:.0f}")
+            self.e2_npms_lbl.config(text=f"{avg_2_npms:.0f}")
 
     def get_trimmed_average(self, data_list, trim_percent=0.05):
         n = len(data_list)
@@ -284,21 +313,42 @@ class TournamentRunner:
         avg_2_npms = self.get_trimmed_average(self.e2_npms, 0.05) if self.e2_npms else 0
         
         los_e1 = self.calculate_los(self.e1_wins, self.e2_wins)
-        if los_e1 >= 50.0:
-            los_str = f"Confidence {self.e1_name} is stronger: {los_e1:.1f}%"
+        if self.e1_wins + self.e2_wins < 10:
+            los_str = "Confidence: Gathering data..."
+        elif los_e1 >= 99.0:
+            los_str = f"Confidence: {self.e1_name} is stronger ({los_e1:.1f}%)"
+        elif los_e1 <= 1.0:
+            los_str = f"Confidence: {self.e2_name} is stronger ({(100.0 - los_e1):.1f}%)"
         else:
-            los_str = f"Confidence {self.e2_name} is stronger: {(100.0 - los_e1):.1f}%"
+            current_lead = max(los_e1, 100.0 - los_e1)
+            leader = self.e1_name if los_e1 > 50 else self.e2_name
+            if los_e1 == 50.0:
+                los_str = "Confidence: Exactly tied (50.0%)"
+            else:
+                los_str = f"Confidence: Too close to call ({leader} leads at {current_lead:.1f}%)"
 
-        result_text = (
-            f"{self.games_completed} game tournament.\n"
-            f"Engine {self.e1_name} config: {self.config1.get('time', 0)} ms per move; {self.config1.get('threads', 1)} threads\n"
-            f"Engine {self.e2_name} config: {self.config2.get('time', 0)} ms per move; {self.config2.get('threads', 1)} threads\n"
-            f"{self.e1_name} wins/{self.e2_name} wins/draws: {self.e1_wins}/{self.e2_wins}/{self.draws}\n"
-            f"{los_str}\n"
-            f"Avg depth: {self.e1_name}: {avg_1_depth:.1f}; {self.e2_name}: {avg_2_depth:.1f}\n"
-            f"Avg nodes per ms: {self.e1_name} : {avg_1_npms:.0f}; {self.e2_name}: {avg_2_npms:.0f}"
-        )
+        col1_w = 12 
+        col2_w = max(len(self.e1_name), 10)
+        col3_w = max(len(self.e2_name), 10)
+
+        def fmt_row(c1, c2, c3):
+            return f"{str(c1).ljust(col1_w)} | {str(c2).ljust(col2_w)} | {str(c3).ljust(col3_w)}"
+
+        separator = "-" * (col1_w + col2_w + col3_w + 6)
+
+        lines = [
+            f"Tournament Results: {self.games_completed} games completed (Draws: {self.draws})",
+            f"{los_str}\n",
+            fmt_row("Statistic", self.e1_name, self.e2_name),
+            separator,
+            fmt_row("Wins", self.e1_wins, self.e2_wins),
+            fmt_row("Avg Depth", f"{avg_1_depth:.1f}", f"{avg_2_depth:.1f}"),
+            fmt_row("Nodes/ms", f"{avg_1_npms:.0f}", f"{avg_2_npms:.0f}"),
+            fmt_row("Threads", self.config1.get('threads', 1), self.config2.get('threads', 1)),
+            fmt_row("Time (ms)", self.config1.get('time', 0), self.config2.get('time', 0))
+        ]
         
+        result_text = "\n".join(lines)
         self.window.clipboard_append(result_text)
         self.window.update()
 
