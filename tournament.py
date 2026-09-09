@@ -243,6 +243,9 @@ class TournamentRunner:
             if self.is_running:
                 print(f"\n--- CRASH DETECTED IN GAME {game_id} ---")
                 print(f"Error: {e}")
+                print(f"FEN at start of game: {self.get_starting_board(game_id).fen()}")
+                print(f"FEN at time of crash: {board.fen()}")
+                print(f"Moves played so far: {[m.uci() for m in board.move_stack]}")
                 print("-" * 40 + "\n")
                 result_data["result"] = "CRASH"
             else:
