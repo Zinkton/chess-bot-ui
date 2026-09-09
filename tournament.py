@@ -147,7 +147,7 @@ class TournamentRunner:
             if los_e1 == 50.0:
                 self.los_lbl.config(text="Confidence: Exactly tied (50.0%)")
             else:
-                self.los_lbl.config(text=f"Confidence: Too close to call ({leader} leads at {current_lead:.1f}%)")
+                self.los_lbl.config(text=f"Confidence: {leader} leads at {current_lead:.1f}%")
         
         if self.e1_depths:
             avg_1_depth = self.get_trimmed_average(self.e1_depths, 0.05)
@@ -325,7 +325,7 @@ class TournamentRunner:
             if los_e1 == 50.0:
                 los_str = "Confidence: Exactly tied (50.0%)"
             else:
-                los_str = f"Confidence: Too close to call ({leader} leads at {current_lead:.1f}%)"
+                los_str = f"Confidence: {leader} leads at {current_lead:.1f}%"
 
         col1_w = 12 
         col2_w = max(len(self.e1_name), 10)
