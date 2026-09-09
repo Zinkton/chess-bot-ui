@@ -6,6 +6,7 @@ import chess.engine
 import os
 import concurrent.futures
 import random
+import math  # <-- Added for LOS calculation
 
 class TournamentRunner:
     def __init__(self, root, config1, config2, num_games=100, concurrent_games=12):
@@ -68,7 +69,7 @@ class TournamentRunner:
     def setup_ui(self):
         self.window = tk.Toplevel(self.root)
         self.window.title(f"Tournament: {self.e1_name} vs {self.e2_name}")
-        self.window.geometry("450x320")
+        self.window.geometry("450x360")
         
         self.window.protocol("WM_DELETE_WINDOW", self.close_window_handler)
 
@@ -77,6 +78,9 @@ class TournamentRunner:
 
         self.score_lbl = ttk.Label(self.window, text=f"{self.e1_name}: 0 | {self.e2_name}: 0 | Draws: 0", font=("Arial", 11))
         self.score_lbl.pack(pady=5)
+        
+        self.los_lbl = ttk.Label(self.window, text="Confidence: 50.0%", font=("Arial", 10, "bold"))
+        self.los_lbl.pack(pady=2)
 
         self.e1_depth_lbl = ttk.Label(self.window, text=f"{self.e1_name} average depth: -", font=("Arial", 10))
         self.e1_depth_lbl.pack(pady=2)
@@ -94,6 +98,13 @@ class TournamentRunner:
         self.copy_btn = ttk.Button(self.window, text="Copy result to clipboard", command=self.copy_to_clipboard)
         self.copy_btn.pack(pady=5)
 
+    def calculate_los(self, w, l):
+        if w + l == 0:
+            return 50.0
+        
+        los = 0.5 + 0.5 * math.erf((w - l) / math.sqrt(2.0 * (w + l)))
+        return los * 100.0
+
     def update_ui(self):
         if not tk.Toplevel.winfo_exists(self.window):
             return
@@ -102,6 +113,12 @@ class TournamentRunner:
         self.score_lbl.config(
             text=f"{self.e1_name} wins: {self.e1_wins} | {self.e2_name} wins: {self.e2_wins} | Draws: {self.draws}"
         )
+        
+        los_e1 = self.calculate_los(self.e1_wins, self.e2_wins)
+        if los_e1 >= 50.0:
+            self.los_lbl.config(text=f"Confidence {self.e1_name} is stronger: {los_e1:.1f}%")
+        else:
+            self.los_lbl.config(text=f"Confidence {self.e2_name} is stronger: {(100.0 - los_e1):.1f}%")
         
         if self.e1_depths:
             avg_1_depth = self.get_trimmed_average(self.e1_depths, 0.05)
@@ -210,12 +227,6 @@ class TournamentRunner:
                     info=chess.engine.INFO_ALL
                 )
                 
-                move_result = active_engine.play(
-                    board, 
-                    chess.engine.Limit(depth=active_config['depth'], time=time_limit), 
-                    info=chess.engine.INFO_ALL
-                )
-                
                 info = move_result.info
                 actual_depth = info.get("depth", active_config['depth'])
                 npms = None
@@ -271,12 +282,19 @@ class TournamentRunner:
         
         avg_1_npms = self.get_trimmed_average(self.e1_npms, 0.05) if self.e1_npms else 0
         avg_2_npms = self.get_trimmed_average(self.e2_npms, 0.05) if self.e2_npms else 0
+        
+        los_e1 = self.calculate_los(self.e1_wins, self.e2_wins)
+        if los_e1 >= 50.0:
+            los_str = f"Confidence {self.e1_name} is stronger: {los_e1:.1f}%"
+        else:
+            los_str = f"Confidence {self.e2_name} is stronger: {(100.0 - los_e1):.1f}%"
 
         result_text = (
             f"{self.games_completed} game tournament.\n"
             f"Engine {self.e1_name} config: {self.config1.get('time', 0)} ms per move; {self.config1.get('threads', 1)} threads\n"
             f"Engine {self.e2_name} config: {self.config2.get('time', 0)} ms per move; {self.config2.get('threads', 1)} threads\n"
             f"{self.e1_name} wins/{self.e2_name} wins/draws: {self.e1_wins}/{self.e2_wins}/{self.draws}\n"
+            f"{los_str}\n"
             f"Avg depth: {self.e1_name}: {avg_1_depth:.1f}; {self.e2_name}: {avg_2_depth:.1f}\n"
             f"Avg nodes per ms: {self.e1_name} : {avg_1_npms:.0f}; {self.e2_name}: {avg_2_npms:.0f}"
         )
