@@ -6,7 +6,7 @@ import chess.engine
 import os
 import concurrent.futures
 import random
-import math  # <-- Added for LOS calculation
+import math
 
 class TournamentRunner:
     def __init__(self, root, config1, config2, num_games=100, concurrent_games=12):
@@ -249,10 +249,11 @@ class TournamentRunner:
                     active_config = self.config2 if is_white_turn else self.config1
                 
                 time_limit = (active_config['time'] / 1000.0) if active_config['time'] else None
+                node_limit = active_config.get('nodes')
                 
                 move_result = active_engine.play(
                     board, 
-                    chess.engine.Limit(depth=active_config['depth'], time=time_limit), 
+                    chess.engine.Limit(depth=active_config['depth'], time=time_limit, nodes=node_limit), 
                     info=chess.engine.INFO_ALL
                 )
                 
@@ -333,6 +334,9 @@ class TournamentRunner:
 
         def fmt_row(c1, c2, c3):
             return f"{str(c1).ljust(col1_w)} | {str(c2).ljust(col2_w)} | {str(c3).ljust(col3_w)}"
+            
+        def fmt_limit(val):
+            return "Inf" if val is None else str(val)
 
         separator = "-" * (col1_w + col2_w + col3_w + 6)
 
@@ -345,7 +349,8 @@ class TournamentRunner:
             fmt_row("Avg Depth", f"{avg_1_depth:.1f}", f"{avg_2_depth:.1f}"),
             fmt_row("Nodes/ms", f"{avg_1_npms:.0f}", f"{avg_2_npms:.0f}"),
             fmt_row("Threads", self.config1.get('threads', 1), self.config2.get('threads', 1)),
-            fmt_row("Time (ms)", self.config1.get('time', 0), self.config2.get('time', 0))
+            fmt_row("Time (ms)", fmt_limit(self.config1.get('time')), fmt_limit(self.config2.get('time'))),
+            fmt_row("Max Nodes", fmt_limit(self.config1.get('nodes')), fmt_limit(self.config2.get('nodes'))) # <--- ADDED
         ]
         
         result_text = "\n".join(lines)

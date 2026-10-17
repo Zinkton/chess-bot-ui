@@ -221,3 +221,5 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 engine_config.json
+config.json
+fathom.dll

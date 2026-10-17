@@ -41,7 +41,8 @@ class ChessController:
             'path': '',
             'depth': 100,
             'time': 100,
-            'threads': 1
+            'threads': 1,
+            'nodes': None
         }
         if os.path.exists(CONFIG_FILE):
             try:
@@ -114,6 +115,11 @@ class ChessController:
         threads_var = tk.StringVar(value=to_str(defaults.get('threads', 1)))
         tk.Entry(dialog, textvariable=threads_var, width=15).grid(row=3, column=1, sticky="w")
         
+        # Nodes
+        tk.Label(dialog, text="Max Nodes (empty = infinite):").grid(row=4, column=0, padx=10, pady=5, sticky="e")
+        nodes_var = tk.StringVar(value=to_str(defaults.get('nodes')))
+        tk.Entry(dialog, textvariable=nodes_var, width=15).grid(row=4, column=1, sticky="w")
+        
         def submit():
             if not path_var.get():
                 messagebox.showerror("Error", "Please select an engine executable.", parent=dialog)
@@ -127,13 +133,14 @@ class ChessController:
             result_config['depth'] = parse_val(depth_var.get())
             result_config['time'] = parse_val(time_var.get())
             result_config['threads'] = parse_val(threads_var.get())
+            result_config['nodes'] = parse_val(nodes_var.get())
             
             self.last_engine_config = result_config.copy()
             self._save_config()
             
             dialog.destroy()
             
-        tk.Button(dialog, text="Confirm Settings", command=submit, width=20).grid(row=4, column=0, columnspan=3, pady=20)
+        tk.Button(dialog, text="Confirm Settings", command=submit, width=20).grid(row=5, column=0, columnspan=3, pady=20)
         
         dialog.grab_set()
         self.view.root.wait_window(dialog)
@@ -425,7 +432,9 @@ class ChessController:
             start_time = time.time()
             
             time_limit_sec = (config['time'] / 1000.0) if config['time'] is not None else None
-            limit = chess.engine.Limit(depth=config['depth'], time=time_limit_sec)
+            node_limit = config.get('nodes')
+            
+            limit = chess.engine.Limit(depth=config['depth'], time=time_limit_sec, nodes=node_limit)
             
             result = engine.play(board, limit, info=chess.engine.INFO_ALL)
             
