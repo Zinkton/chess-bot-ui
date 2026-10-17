@@ -226,7 +226,25 @@ class ChessController:
                 self.ask_game_mode()
                 return
             
-            runner = TournamentRunner(self.view.root, white_cfg, black_cfg, num_games=num_games, concurrent_games=concurrent_games)
+            AVAILABLE_CORES = 16
+
+            max_threads = max(white_cfg.get('threads') or 1, black_cfg.get('threads') or 1)
+            max_concurrent = max(1, AVAILABLE_CORES // max_threads)
+
+            if concurrent_games > max_concurrent:
+                reduce = messagebox.askyesno(
+                    "Too many concurrent games",
+                    f"{concurrent_games} games × {max_threads} threads needs "
+                    f"{concurrent_games * max_threads} cores, but only {AVAILABLE_CORES} are available.\n\n"
+                    f"Reduce to {max_concurrent} concurrent games?"
+                )
+                if not reduce:
+                    self.ask_game_mode()
+                    return
+                concurrent_games = max_concurrent
+
+            runner = TournamentRunner(self.view.root, white_cfg, black_cfg,
+                                    num_games=num_games, concurrent_games=concurrent_games)
             
             self.view.root.wait_window(runner.window)
             self.ask_game_mode()

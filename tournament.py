@@ -7,6 +7,8 @@ import os
 import concurrent.futures
 import random
 import math
+import queue
+import psutil
 
 class TournamentRunner:
     def __init__(self, root, config1, config2, num_games=100, concurrent_games=12):
@@ -45,10 +47,30 @@ class TournamentRunner:
         self.games_completed = 0
         self.is_running = True
 
+        self.free_slots = queue.Queue()
+        for i in range(concurrent_games):
+            self.free_slots.put(i)
+
+        self.threads_per_game = max(config1.get('threads') or 1, config2.get('threads') or 1)
+
         self.setup_ui()
         
         self.thread = threading.Thread(target=self.run_tournament, daemon=True)
         self.thread.start()
+
+    def cores_for_slot(self, slot):
+        start = 16 + slot * self.threads_per_game
+        end = start + self.threads_per_game
+        if end > 32:
+            return list(range(16, 32))
+        return list(range(start, end))
+
+    def pin_engine(self, engine, cores):
+        try:
+            pid = engine.protocol.transport.get_pid()
+            psutil.Process(pid).cpu_affinity(cores)
+        except Exception as e:
+            print(f"Notice: could not set affinity ({e})")
 
     def get_starting_board(self, game_id):
         pair_id = (game_id - 1) // 2
@@ -208,6 +230,7 @@ class TournamentRunner:
         if not self.is_running:
             return None
 
+        board = None
         engine1 = None
         engine2 = None
         engine1_is_white = (game_id % 2 != 0)
@@ -221,10 +244,16 @@ class TournamentRunner:
             "e1_is_white": engine1_is_white
         }
 
+        slot = self.free_slots.get()
+
         try:
             engine1 = chess.engine.SimpleEngine.popen_uci(self.config1['path'])
             engine2 = chess.engine.SimpleEngine.popen_uci(self.config2['path'])
 
+            cores = self.cores_for_slot(slot)
+            self.pin_engine(engine1, cores)
+            self.pin_engine(engine2, cores)
+            
             if self.config1['threads']:
                 try: engine1.configure({"Threads": self.config1['threads']})
                 except: pass
@@ -273,7 +302,15 @@ class TournamentRunner:
                     if actual_depth is not None: result_data["e2_depths"].append(actual_depth)
                     if npms is not None: result_data["e2_npms"].append(npms)
                 
-                board.push(move_result.move)
+                move = move_result.move
+                if move is None or move not in board.legal_moves:
+                    loser_is_white = board.turn == chess.WHITE
+                    name = self.e1_name if (active_engine == engine1) else self.e2_name
+                    print(f"[Game {game_id}] {name} returned an illegal move ({move}). Forfeit.")
+                    result_data["result"] = "0-1" if loser_is_white else "1-0"
+                    return result_data
+
+                board.push(move)
 
             if not self.is_running:
                 result_data["result"] = "STOPPED"
@@ -285,8 +322,9 @@ class TournamentRunner:
                 print(f"\n--- CRASH DETECTED IN GAME {game_id} ---")
                 print(f"Error: {e}")
                 print(f"FEN at start of game: {self.get_starting_board(game_id).fen()}")
-                print(f"FEN at time of crash: {board.fen()}")
-                print(f"Moves played so far: {[m.uci() for m in board.move_stack]}")
+                if board:
+                    print(f"FEN at time of crash: {board.fen()}")
+                    print(f"Moves played so far: {[m.uci() for m in board.move_stack]}")
                 print("-" * 40 + "\n")
                 result_data["result"] = "CRASH"
             else:
@@ -301,6 +339,7 @@ class TournamentRunner:
             if hasattr(self, 'active_engines') and game_id in self.active_engines:
                 try: del self.active_engines[game_id]
                 except: pass
+            self.free_slots.put(slot)
 
         return result_data
 
