@@ -48,7 +48,7 @@ def main():
         "fastchess.exe",
         "-engine", f"cmd={args.engine1}", f"name={name1}",
         "-engine", f"cmd={args.engine2}", f"name={name2}",
-        "-each", "proto=uci", "tc=10+0.05", f"option.Threads={args.threads}",
+        "-each", "proto=uci", "tc=8+0.08", f"option.Threads={args.threads}",
         "-concurrency", str(args.concurrency),
         "-games", "2", "-repeat", "-rounds", "50000",
         "-recover",

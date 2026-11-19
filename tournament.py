@@ -43,7 +43,10 @@ class TournamentRunner:
         
         self.e1_npms = []
         self.e2_npms = []
-        
+
+        self.e1_nodes = []
+        self.e2_nodes = []
+
         self.games_completed = 0
         self.is_running = True
 
@@ -91,7 +94,7 @@ class TournamentRunner:
     def setup_ui(self):
         self.window = tk.Toplevel(self.root)
         self.window.title(f"Tournament: {self.e1_name} vs {self.e2_name}")
-        self.window.geometry("450x380")
+        self.window.geometry("450x410")
         
         self.window.protocol("WM_DELETE_WINDOW", self.close_window_handler)
 
@@ -133,6 +136,12 @@ class TournamentRunner:
         self.e1_npms_lbl.grid(row=4, column=1, pady=2)
         self.e2_npms_lbl = ttk.Label(stats_frame, text="-", font=("Arial", 10))
         self.e2_npms_lbl.grid(row=4, column=2, pady=2)
+
+        ttk.Label(stats_frame, text="Avg Nodes:", font=("Arial", 10)).grid(row=5, column=0, sticky="w", pady=2)
+        self.e1_nodes_lbl = ttk.Label(stats_frame, text="-", font=("Arial", 10))
+        self.e1_nodes_lbl.grid(row=5, column=1, pady=2)
+        self.e2_nodes_lbl = ttk.Label(stats_frame, text="-", font=("Arial", 10))
+        self.e2_nodes_lbl.grid(row=5, column=2, pady=2)
 
         self.stop_btn = ttk.Button(self.window, text="Stop tournament", command=self.stop_tournament)
         self.stop_btn.pack(pady=(20, 5))
@@ -186,6 +195,14 @@ class TournamentRunner:
         if self.e2_npms:
             avg_2_npms = self.get_trimmed_average(self.e2_npms, 0.05)
             self.e2_npms_lbl.config(text=f"{avg_2_npms:.0f}")
+
+        if self.e1_nodes:
+            avg_1_nodes = self.get_trimmed_average(self.e1_nodes, 0.05)
+            self.e1_nodes_lbl.config(text=f"{avg_1_nodes:,.0f}")
+
+        if self.e2_nodes:
+            avg_2_nodes = self.get_trimmed_average(self.e2_nodes, 0.05)
+            self.e2_nodes_lbl.config(text=f"{avg_2_nodes:,.0f}")
 
     def get_trimmed_average(self, data_list, trim_percent=0.05):
         n = len(data_list)
@@ -241,6 +258,8 @@ class TournamentRunner:
             "e2_depths": [],
             "e1_npms": [],
             "e2_npms": [],
+            "e1_nodes": [],
+            "e2_nodes": [],
             "e1_is_white": engine1_is_white
         }
 
@@ -295,12 +314,16 @@ class TournamentRunner:
                 elif "nodes" in info and "time" in info and info["time"] > 0:
                     npms = info["nodes"] / info["time"]
 
+                total_nodes = info.get("nodes")
+
                 if active_engine == engine1:
                     if actual_depth is not None: result_data["e1_depths"].append(actual_depth)
                     if npms is not None: result_data["e1_npms"].append(npms)
+                    if total_nodes is not None: result_data["e1_nodes"].append(total_nodes)
                 else:
                     if actual_depth is not None: result_data["e2_depths"].append(actual_depth)
                     if npms is not None: result_data["e2_npms"].append(npms)
+                    if total_nodes is not None: result_data["e2_nodes"].append(total_nodes)
                 
                 move = move_result.move
                 if move is None or move not in board.legal_moves:
@@ -351,7 +374,10 @@ class TournamentRunner:
         
         avg_1_npms = self.get_trimmed_average(self.e1_npms, 0.05) if self.e1_npms else 0
         avg_2_npms = self.get_trimmed_average(self.e2_npms, 0.05) if self.e2_npms else 0
-        
+
+        avg_1_nodes = self.get_trimmed_average(self.e1_nodes, 0.05) if self.e1_nodes else 0
+        avg_2_nodes = self.get_trimmed_average(self.e2_nodes, 0.05) if self.e2_nodes else 0
+
         los_e1 = self.calculate_los(self.e1_wins, self.e2_wins)
         if self.e1_wins + self.e2_wins < 10:
             los_str = "Confidence: Gathering data..."
@@ -387,6 +413,7 @@ class TournamentRunner:
             fmt_row("Wins", self.e1_wins, self.e2_wins),
             fmt_row("Avg Depth", f"{avg_1_depth:.1f}", f"{avg_2_depth:.1f}"),
             fmt_row("Nodes/ms", f"{avg_1_npms:.0f}", f"{avg_2_npms:.0f}"),
+            fmt_row("Avg Nodes", f"{avg_1_nodes:,.0f}", f"{avg_2_nodes:,.0f}"),
             fmt_row("Threads", self.config1.get('threads', 1), self.config2.get('threads', 1)),
             fmt_row("Time (ms)", fmt_limit(self.config1.get('time')), fmt_limit(self.config2.get('time'))),
             fmt_row("Max Nodes", fmt_limit(self.config1.get('nodes')), fmt_limit(self.config2.get('nodes'))) # <--- ADDED
@@ -427,6 +454,8 @@ class TournamentRunner:
                 self.e2_depths.extend(data["e2_depths"])
                 self.e1_npms.extend(data["e1_npms"])
                 self.e2_npms.extend(data["e2_npms"])
+                self.e1_nodes.extend(data["e1_nodes"])
+                self.e2_nodes.extend(data["e2_nodes"])
                 self.games_completed += 1
                 
                 self.root.after(0, self.update_ui)
